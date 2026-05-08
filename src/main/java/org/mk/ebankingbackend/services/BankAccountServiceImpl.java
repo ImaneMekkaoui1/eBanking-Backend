@@ -3,21 +3,20 @@ package org.mk.ebankingbackend.services;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.mk.ebankingbackend.entities.BankAccount;
-import org.mk.ebankingbackend.entities.CurrentAccount;
-import org.mk.ebankingbackend.entities.Customer;
-import org.mk.ebankingbackend.entities.SavingAccount;
+import org.mk.ebankingbackend.entities.*;
+import org.mk.ebankingbackend.enums.OperationType;
+import org.mk.ebankingbackend.exceptions.BalanceNotSufficientException;
+import org.mk.ebankingbackend.exceptions.BankAccountNotFoundException;
+import org.mk.ebankingbackend.exceptions.CustomerNotFoundException;
 import org.mk.ebankingbackend.repositories.AccountOperationRepository;
 import org.mk.ebankingbackend.repositories.BankAccountRepository;
 import org.mk.ebankingbackend.repositories.CustomerRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+
 
 @Service
 @Transactional
@@ -39,47 +38,100 @@ public class BankAccountServiceImpl implements BankAccountService {
     }
 
     @Override
-    public BankAccount saveBankAccount(double initialBalance, String type, Long CustomerId) {
+    public CurrentAccount saveCurrentBankAccount(double initialBalance, double overDraft, Long CustomerId) throws CustomerNotFoundException {
+
         Customer customer = customerRepository.findById(CustomerId).orElse(null);
         if(customer == null)
-            throw new RuntimeException("Customer not found");
-        BankAccount bankAccount;
-        if(type.equals("current")){
-            bankAccount = new CurrentAccount();
+            throw new CustomerNotFoundException("Customer not found");
+        CurrentAccount currentAccount = new CurrentAccount();
 
-        } else {
-            bankAccount = new SavingAccount();
+        currentAccount.setId(UUID.randomUUID().toString());
+        currentAccount.setCreatedAt(new Date());
+        currentAccount.setBalance(initialBalance);
+        currentAccount.setOverDraft(overDraft);
 
-        }
-        bankAccount.setId(UUID.randomUUID().toString());
-        bankAccount.setCreatedAt(new Date());
-        bankAccount.setBalance(initialBalance);
+        currentAccount.setCustomer(customer);
 
-        return null;
+        CurrentAccount savedBankAccount = bankAccountRepository.save(currentAccount);
+
+        return savedBankAccount;
+
     }
+
+    @Override
+    public SavingAccount saveSavingBankAccount(double initialBalance, double InterestRate, Long CustomerId) throws CustomerNotFoundException {
+        Customer customer = customerRepository.findById(CustomerId).orElse(null);
+        if(customer == null)
+            throw new CustomerNotFoundException("Customer not found");
+        SavingAccount savingAccount = new SavingAccount();
+
+        savingAccount.setId(UUID.randomUUID().toString());
+        savingAccount.setCreatedAt(new Date());
+        savingAccount.setBalance(initialBalance);
+        savingAccount.setInterestRate(InterestRate);
+
+        savingAccount.setCustomer(customer);
+
+        SavingAccount savedBankAccount = bankAccountRepository.save(savingAccount);
+
+        return savedBankAccount;
+    }
+
 
     @Override
     public List<Customer> listCustomers() {
-        return List.of();
+
+        return customerRepository.findAll();
     }
 
     @Override
-    public BankAccount getBankAccountById(String accountId) {
+    public BankAccount getBankAccount(String accountId) throws BankAccountNotFoundException {
+        BankAccount bankAccount = bankAccountRepository.findById(accountId)
+                .orElseThrow(()->new BankAccountNotFoundException("BankAccount not found"));
+        return bankAccount;
+    }
+
+    @Override
+    public BankAccount getBankAccountById(String accountId) throws BankAccountNotFoundException {
         return null;
     }
 
+
     @Override
-    public void debit(String accountId, double amount, String description) {
+    public void debit(String accountId, double amount, String description) throws BankAccountNotFoundException, BalanceNotSufficientException {
+        BankAccount bankAccount = getBankAccount(accountId);
+        if(bankAccount.getBalance()<amount)
+            throw new BalanceNotSufficientException("Balance not sufficient");
+        AccountOperation accountOperation = new AccountOperation();
+        accountOperation.setType(OperationType.DEBIT);
+        accountOperation.setAmount(amount);
+        accountOperation.setDescription(description);
+        accountOperation.setOperationDate(new Date());
+        accountOperation.setBankAccount(bankAccount);
+        accountOperationRepository.save(accountOperation);
+        bankAccount.setBalance(bankAccount.getBalance()-amount);
+        bankAccountRepository.save(bankAccount);
+    }
+
+    @Override
+    public void credit(String accountId, double amount, String description) throws BankAccountNotFoundException {
+        BankAccount bankAccount = getBankAccount(accountId);
+        AccountOperation accountOperation = new AccountOperation();
+        accountOperation.setType(OperationType.CREDIT);
+        accountOperation.setAmount(amount);
+        accountOperation.setDescription(description);
+        accountOperation.setOperationDate(new Date());
+        accountOperation.setBankAccount(bankAccount);
+        accountOperationRepository.save(accountOperation);
+        bankAccount.setBalance(bankAccount.getBalance()+ amount);
+        bankAccountRepository.save(bankAccount);
+
 
     }
 
     @Override
-    public void credit(String accountId, double amount, String description) {
-
-    }
-
-    @Override
-    public void transfer(String accountIdSource, String accountIdDestination, double amount) {
-
+    public void transfer(String accountIdSource, String accountIdDestination, double amount) throws BankAccountNotFoundException, BalanceNotSufficientException {
+        debit(accountIdSource,amount, "transfer to" +  accountIdDestination);
+        credit(accountIdDestination,amount, "transfer from " +  accountIdSource);
     }
 }
