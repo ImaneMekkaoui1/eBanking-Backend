@@ -11,19 +11,25 @@ import java.util.List;
 @Entity
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "TYPE", length = 4)
-@Data @NoArgsConstructor
+@Data
+@NoArgsConstructor
 @AllArgsConstructor
 public class BankAccount {
     @Id
     private String id;
-    private Date CreatedAt;
+
+    private Date createdAt;
     private Double balance;
+
     @Enumerated(EnumType.STRING)
-    private AccountStatus AccStatus;
-    private String Currency;
+    private AccountStatus status;
+
+    private String currency;
+
     @ManyToOne
     private Customer customer;
-    @OneToMany(mappedBy = "bankAccount",fetch = FetchType.LAZY)
-    private List<AccountOperation>accountOperations;
 
+    @OneToMany(mappedBy = "bankAccount", fetch = FetchType.LAZY)
+    private List<AccountOperation> accountOperations;
 }
+
